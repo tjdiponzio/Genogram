@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GenogramStudio</title>
+<style>
+:root{--bg:#f1f5f9;--pan:#fff;--ink:#1e293b;--mut:#64748b;--bd:#cbd5e1;--acc:#4f46e5;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f172a;--pan:#1e293b;--ink:#e2e8f0;--mut:#94a3b8;--bd:#475569}}
+:root[data-theme="dark"]{--bg:#0f172a;--pan:#1e293b;--ink:#e2e8f0;--mut:#94a3b8;--bd:#475569}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font:13px system-ui,sans-serif;display:flex;flex-direction:column;user-select:none}
+header{background:var(--pan);border-bottom:1px solid var(--bd);padding:8px 12px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+button,select,input{font:inherit;color:var(--ink)}
+button,.btn{background:var(--pan);border:1px solid var(--bd);border-radius:8px;padding:5px 9px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+button.on{border-color:var(--acc);box-shadow:0 0 0 2px var(--acc)}
+button i{width:14px;height:4px;border-radius:2px;display:inline-block}
+.sep{width:1px;height:22px;background:var(--bd)}
+main{flex:1;display:flex;min-height:0}
+#cv{flex:1;position:relative;overflow:hidden}
+svg{width:100%;height:100%;touch-action:none;cursor:crosshair}
+aside{width:250px;background:var(--pan);border-left:1px solid var(--bd);padding:12px;overflow:auto}
+label{display:block;margin-bottom:8px;font-size:11px;color:var(--mut)}
+label input:not([type=checkbox]),label select{display:block;width:100%;box-sizing:border-box;margin-top:2px;padding:5px;background:var(--bg);border:1px solid var(--bd);border-radius:6px}
+.mut{color:var(--mut)}
+#hint{position:absolute;left:10px;bottom:8px;background:var(--pan);border:1px solid var(--bd);border-radius:8px;padding:4px 8px;font-size:11px;color:var(--mut)}
+@media(max-width:700px){main{flex-direction:column}aside{width:auto;max-height:35%;border-left:0;border-top:1px solid var(--bd)}}
+.ri{display:flex;justify-content:space-between;align-items:center;padding:5px 6px;border:1px solid var(--bd);border-radius:8px;margin-bottom:4px;font-size:12px;cursor:pointer}.ri.on{border-color:var(--acc)}.ri button{padding:1px 6px}
+#key{position:absolute;top:8px;right:8px;width:320px;max-height:calc(100% - 50px);overflow:auto;background:var(--pan);border:1px solid var(--bd);border-radius:10px;padding:10px;box-shadow:0 4px 16px #0003;font-size:11px}
+.kg{display:grid;grid-template-columns:1fr 1fr}.ki,.kl{display:flex;align-items:center;gap:6px}.kl svg{flex:none}
+</style></head>
+<body>
+<header>
+ <b>GenogramStudio</b><span class="sep"></span>
+ <button onclick="addNode()">+ Person</button>
+ <button id="tb-move" onclick="setTool('move')">Select / Move</button>
+ <span class="sep"></span>
+ <span id="tools" style="display:contents"></span>
+</header>
+<header style="border-top:0;padding-top:0">
+ <button onclick="del()">Delete selected</button>
+ <button onclick="zoom(1.15)">＋</button><span id="zl">100%</span><button onclick="zoom(1/1.15)">－</button>
+ <span id="layers" style="display:contents"></span><button id="teach" onclick="toggleTeach()">Instructor mode</button><button onclick="toggleKey()">Key</button>
+ <span class="sep"></span>
+ <button onclick="sample()">Sample</button><button onclick="clearAll()">Clear</button>
+ <button onclick="exportJSON()">Export JSON</button>
+ <label class="btn" style="margin:0;color:var(--ink)">Import JSON<input type="file" accept=".json" hidden onchange="importJSON(event)"></label>
+</header>
+<main>
+ <div id="cv"><svg id="svg"><defs><pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="#fff"/><line x1="0" y1="0" x2="0" y2="6" stroke="#dc2626" stroke-width="2.5"/></pattern></defs><g id="w"></g></svg>
+  <div id="key" hidden></div><div id="hint"></div></div>
+ <aside><div id="insp"></div><hr style="border:0;border-top:1px solid var(--bd);margin:12px 0"><b>Relationships</b><div id="rels" style="margin-top:6px"></div></aside>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const INK='var(--ink)';
+const T={marriage:['Marriage',INK],separation:['Separation (1 slash)',INK],divorce:['Divorce (2 slashes)',INK],couple:['Couple Relationship',INK],committed:['Committed Relationship',INK],affair:['Secret Affair','#dc2626'],parent_child:['Parent-Child',INK],conflict:['Conflict','#dc2626'],conflict_connected:['Conflict Connected','#059669'],cutoff:['Cutoff',INK],overinvolved:['Fused','#2563eb'],close:['Close','#6366f1'],disengaged:['Distant','#64748b'],abusive:['Abusive','#b91c1c'],permissive:['Passive / Permissive','#d97706']};
+const FILL={he:'#dbeafe',she:'#fce7f3',nonbinary:'#d1fae5'};
+const CND=[['','None'],['problem','Psychological or physical problem'],['alcohol','Alcohol or drug abuse'],['suspected','Suspected alcohol or drug abuse'],['remission','Illness in remission'],['recovery','In recovery from substance abuse'],['serious','Serious mental/physical problems & substance abuse'],['recovery_both','In recovery: substance abuse & mental/physical problems']];
+const F=[['name','Name','text'],['kind','Symbol type','select',[['person','Person'],['secret','Secret'],['pet','Pet'],['institution','Institutional connection'],['location','Location & income']]],['sex','Gender shape','select',[['male','Male (square)'],['female','Female (circle)'],['nonbinary','Non-binary (arch)']]],['pronouns','Pronouns (fill color)','select',['he','she','nonbinary']],['trans','Transgender (inner shape)','check'],['orient','LGBTQIA+ (triangle)','check'],['immig','Immigration / 2+ cultures','select',[['0','None'],['1','1 wave line'],['2','2 wave lines']]],['condition','Health / addiction marking','select',CND],['birth','Birth year','number'],['death','Death year','number'],['isDeceased','Deceased (X)','check'],['job','Occupation','text'],['diagnoses','Diagnoses / medical','text'],['presenting','Presenting problems','text'],['culture','Cultural identities','text'],['loc','Location / income (red label)','text']];
+let cc=0;
+let S={nodes:[],rels:[],tool:'move',sel:null,pan:{x:40,y:20},zoom:1,layers:{dates:1,age:1,jobs:1,diagnoses:1,presenting:1,culture:1},teacher:0},draft=null,drag=null,pan=null;
+const N=id=>S.nodes.find(n=>n.id==id);
+const hint={move:'Drag people to move them (snaps to grid). Click a line to select it, then Delete.'};
+
+$('tools').innerHTML=Object.entries(T).map(([k,[l,c]])=>`<button id="tb-${k}" onclick="setTool('${k}')"><i style="background:${c}"></i>${l}</button>`).join('');
+function setTool(t){S.tool=t;draft=null;document.querySelectorAll('[id^=tb-]').forEach(b=>b.classList.toggle('on',b.id=='tb-'+t));
+ $('hint').textContent=t=='move'?hint.move:`Drag from one person to another to draw a ${T[t][0]} line.`+(['abusive','permissive','parent_child'].includes(t)?' Drag from the source (abuser / permissive parent / parent) to the target.':'')+' Esc to stop drawing.';draw()}
+
+const line=(x1,y1,x2,y2,c,w,x='')=>`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${c}" stroke-width="${w}" stroke-linecap="round" ${x}/>`;
+function relSVG(r){
+ const a=r.a||N(r.from),b=r.b||N(r.to);if(!a||!b)return'';
+ const c=T[r.type][1],sel=S.sel?.t=='r'&&S.sel.id==r.id;
+ const dx=b.x-a.x,dy=b.y-a.y,L=Math.hypot(dx,dy)||1,ux=dx/L,uy=dy/L,px=-uy,py=ux;
+ const P=(t,o)=>[a.x+ux*t+px*o,a.y+uy*t+py*o];
+ const ln=(t1,o1,t2,o2,col=c,w=2,x='')=>{const p=P(t1,o1),q=P(t2,o2);return line(p[0],p[1],q[0],q[1],col,w,x)};
+ const arrow=(t,col)=>{const q=P(t,0),l=P(t-14,6),m=P(t-14,-6);return `<polygon points="${q} ${l} ${m}" fill="${col}"/>`};
+ let d=`M${a.x} ${a.y}L${b.x} ${b.y}`,s='';
+ const t=r.type;
+ if(t=='parent_child'){
+  const m=S.rels.find(x=>PART.includes(x.type)&&(x.from==a.id||x.to==a.id)),p=m&&N(m.from==a.id?m.to:m.from);
+  const sx=p?(a.x+p.x)/2:a.x,sy=p?(a.y+p.y)/2:a.y,by=sy+(b.y-sy)/2;
+  d=`M${sx} ${sy}V${by}H${b.x}V${b.y}`;s=`<path d="${d}" fill="none" stroke="${c}" stroke-width="2"/>`;
+ }else if(PART.includes(t)){
+  s=ln(0,0,L,0,c,2,t=='couple'||t=='affair'?'stroke-dasharray="7 6"':'');
+  if(t=='committed')s+=ln(0,7,L,7,c,2,'stroke-dasharray="7 6"');
+  if(t=='divorce')s+=ln(L/2-4,-11,L/2,11,'#dc2626',3)+ln(L/2+4,-11,L/2+8,11,'#dc2626',3);
+  if(t=='separation')s+=ln(L/2-2,-11,L/2+2,11,'#dc2626',3);
+  if(t=='affair'){const q=P(L/2,24);s+=`<polygon points="${q[0]},${q[1]-12} ${q[0]+12},${q[1]+10} ${q[0]-12},${q[1]+10}" fill="#ef4444"/>`}
+  if(r.date){const q=P(L/2,t=='affair'?46:24);s+=`<text x="${q[0]}" y="${q[1]}" text-anchor="middle" font-size="11" fill="#b91c1c" pointer-events="none">${esc(r.date)}</text>`}
+ }else if(t=='conflict'||t=='conflict_connected'){
+  const n=Math.max(2,Math.round(L/14));let pts=[];
+  for(let i=0;i<=n;i++)pts.push(P(L*i/n,i==0||i==n?0:(i%2?7:-7)));
+  s=`<polyline points="${pts.join(' ')}" fill="none" stroke="${c}" stroke-width="2.5" stroke-linejoin="round"/>`;
+ }else if(t=='cutoff'){
+  s=ln(0,0,L,0,c,2)+ln(L/2-5,-10,L/2-5,10,c,3)+ln(L/2+5,-10,L/2+5,10,c,3);
+ }else if(t=='overinvolved'){s=[-5,0,5].map(o=>ln(0,o,L,o,c,2)).join('');
+ }else if(t=='close'){s=[-3,3].map(o=>ln(0,o,L,o,c,2)).join('');
+ }else if(t=='disengaged'){s=ln(0,0,L,0,c,2,'stroke-dasharray="7 7"');
+ }else if(t=='abusive'){
+  s=ln(0,0,L,0,c,2);
+  for(let k=50;k<L-60;k+=26){const q=P(k,0),l=P(k-9,7),m=P(k-9,-7);s+=`<polyline points="${l} ${q} ${m}" fill="none" stroke="${c}" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>`}
+  s+=arrow(L-38,c);
+ }else if(t=='permissive'){
+  s=ln(0,0,L-40,0,c,4,'stroke-dasharray="0.1 9"')+arrow(L-38,c);
+ }
+ return s+`<path data-rid="${r.id}" d="${d}" fill="none" stroke="${sel?'rgba(79,70,229,.35)':'transparent'}" stroke-width="14" style="cursor:pointer"/>`;
+}
+const R=36,PART=['marriage','divorce','separation','couple','committed','affair'];
+function shp(n,x,ex=''){
+ if(n.sex=='female')return`<circle r="${R+x}" ${ex}/>`;
+ if(n.sex=='nonbinary')return`<path d="M${-R-x} ${R+x}V-6A${R+x} ${R+x} 0 0 1 ${R+x} -6V${R+x}Z" ${ex}/>`;
+ return`<rect x="${-R-x}" y="${-R-x}" width="${2*(R+x)}" height="${2*(R+x)}" rx="${3+x}" ${ex}/>`;
+}
+function symSVG(n){
+ const k=n.kind||'person',ink='#334155',st=`stroke="${ink}" stroke-width="2"`;
+ if(k=='secret')return`<polygon points="0,-38 40,32 -40,32" fill="#ef4444" stroke="#991b1b" stroke-width="2"/>`;
+ if(k=='pet')return`<polygon points="0,-38 38,0 0,38 -38,0" fill="#fee2e2" stroke="#ef4444" stroke-width="3"/>`;
+ if(k=='institution')return`<rect x="-52" y="-18" width="104" height="36" fill="none" stroke="#ef4444" stroke-width="3"/>`;
+ if(k=='location')return`<circle r="30" fill="#fff" ${st}/>`;
+ const H=(x,y,w,h,f='#dc2626',o=1)=>`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${f}" opacity="${o}"/>`,T4=H(-40,-40,80,40),L2=H(-40,-40,40,80);
+ const ov={problem:L2,alcohol:T4,suspected:H(-40,-40,80,40,'url(#hatch)'),remission:H(-40,-40,40,40),recovery:H(-40,-40,80,40,'#dc2626',.35),serious:L2+T4,recovery_both:L2+H(-40,-40,80,40,'#dc2626',.35)}[n.condition]||'';
+ let b=shp(n,0,`fill="${FILL[n.pronouns]||FILL.he}" ${st}`);
+ if(ov){const id='k'+cc++;b+=`<clipPath id="${id}">${shp(n,0)}</clipPath><g clip-path="url(#${id})">${ov}</g>`+shp(n,0,`fill="none" ${st}`)}
+ if(n.trans&&n.sex!='nonbinary')b+=n.sex=='female'?`<rect x="-20" y="-20" width="40" height="40" fill="none" ${st}/>`:`<circle r="23" fill="none" ${st}/>`;
+ if(n.isDeceased)b+=`<path d="M-40 -40L40 40M40 -40L-40 40" stroke="#1e293b" stroke-width="2.5"/>`;
+ if(n.orient)b=`<polygon points="-46,-34 46,-34 0,50" fill="#ef4444"/><g transform="translate(0,-6) scale(.55)">${b}</g>`;
+ return b+(+n.immig>0?[-50,-58].slice(0,+n.immig).map(y=>`<path d="M-18 ${y}q6 -7 12 0t12 0t12 0" fill="none" stroke="#dc2626" stroke-width="2"/>`).join(''):'');
+}
+function nodeSVG(n){
+ const k=S.teacher?1.35:1,L=S.layers,kd=n.kind||'person';
+ const ring=(S.sel?.t=='n'&&S.sel.id==n.id)||draft?.over==n.id;
+ let s=`<g transform="translate(${n.x},${n.y}) scale(${k})" style="cursor:${S.tool=='move'?'move':'crosshair'}">`;
+ if(ring)s+=kd=='person'?shp(n,7,'fill="none" stroke="#4f46e5" stroke-width="3"'):'<rect x="-58" y="-46" width="116" height="92" rx="8" fill="none" stroke="#4f46e5" stroke-width="3"/>';
+ s+=symSVG(n);
+ const t=(x,y,a,f,c,tx,w=400)=>`<text x="${x}" y="${y}" text-anchor="${a}" font-size="${f}" font-weight="${w}" fill="${c}" pointer-events="none">${esc(tx)}</text>`;
+ if(kd=='person'){
+  if(L.dates){if(n.birth)s+=t(-40,-44,'start',10,INK,n.birth+(n.death?'':'-'));if(n.death)s+=t(40,-44,'end',10,INK,n.death)}
+  if(L.age&&n.birth)s+=t(0,6,'middle',16,'#1e293b',(n.death||new Date().getFullYear())-n.birth,600);
+ }
+ if(n.loc)s+=t(0,kd=='location'?-38:-68,'middle',10.5,'#dc2626',n.loc,600);
+ const by=kd=='institution'?36:kd=='location'?46:52;
+ s+=t(0,by,'middle',12,INK,(n.name||'Unnamed').slice(0,16),700);
+ let y=by+13;[[L.jobs&&n.job,INK],[L.diagnoses&&n.diagnoses,'#e11d48'],[L.presenting&&n.presenting,'#d97706'],[L.culture&&n.culture,'#6366f1']].forEach(([v,c])=>{if(v&&v!='None'){s+=t(0,y,'middle',10.5,c,String(v).slice(0,30));y+=13}});
+ return s+'</g>';
+}
+function relList(){$('rels').innerHTML=S.rels.map(r=>`<div class="ri${S.sel?.id==r.id?' on':''}" onclick="S.sel={t:'r',id:'${r.id}'};insp();draw()"><span>${esc(N(r.from)?.name)} ↔ ${esc(N(r.to)?.name)}<br><small class="mut">${T[r.type]?.[0]}</small></span><button onclick="event.stopPropagation();S.rels=S.rels.filter(x=>x.id!='${r.id}');draw()">✕</button></div>`).join('')||'<p class="mut">No lines yet.</p>'}
+$('layers').innerHTML=[['dates','Dates'],['age','Age'],['jobs','Jobs'],['diagnoses','Diagnoses'],['presenting','Presenting'],['culture','Culture']].map(([k,l])=>`<label style="margin:0;display:flex;gap:3px;align-items:center;color:var(--ink)"><input type="checkbox" checked onchange="S.layers.${k}=this.checked;draw()">${l}</label>`).join('');
+function toggleTeach(){S.teacher=!S.teacher;$('teach').classList.toggle('on',S.teacher);draw()}
+function flip(){const r=S.rels.find(x=>x.id==S.sel?.id);if(r){[r.from,r.to]=[r.to,r.from];insp();draw()}}
+function toggleKey(){
+ const k=$('key');k.hidden=!k.hidden;if(k.hidden)return;
+ const items=[['Male',{}],['Female',{sex:'female',pronouns:'she'}],['Non-binary',{sex:'nonbinary',pronouns:'nonbinary'}],['Transgender male',{trans:1}],['Transgender female',{sex:'female',pronouns:'she',trans:1}],['LGBTQIA+ orientation',{orient:1}],['1 wave line (immigration / 2+ cultures)',{immig:1}],['2 wave lines',{immig:2}],['Deceased',{isDeceased:1}],['Secret',{kind:'secret'}],['Pet',{kind:'pet'}],['Institutional connection',{kind:'institution'}],['Location & annual income',{kind:'location'}]].concat(CND.slice(1).map(([v,l])=>[l,{condition:v}]));
+ k.innerHTML='<b>Key</b> <button style="float:right" onclick="toggleKey()">✕</button><p class="mut">Birth year above left, death year above right, age inside, name below. Fill: <span style="color:#2563eb">blue = he/him</span>, <span style="color:#db2777">pink = she/her</span>, <span style="color:#059669">green = nonbinary</span>.</p><div class="kg">'+items.map(([l,p])=>`<div class="ki"><svg width="52" height="54" viewBox="-62 -66 124 130">${symSVG({id:'k',sex:'male',pronouns:'he',...p})}</svg><span>${l}</span></div>`).join('')+'</div><p><b>Lines</b></p>'+Object.entries(T).map(([t,[l]])=>`<div class="kl"><svg width="140" height="26" viewBox="-6 -13 190 26">${relSVG({id:'k',type:t,a:{x:0,y:0,id:'a'},b:{x:170,y:0,id:'b'}})}</svg><span>${l}</span></div>`).join('');
+}
+function draw(){
+ let h='';S.rels.forEach(r=>h+=relSVG(r));S.nodes.forEach(n=>h+=nodeSVG(n));
+ if(draft){const a=N(draft.from),o=draft.over&&N(draft.over),x=o?o.x:draft.x,y=o?o.y:draft.y;h+=line(a.x,a.y,x,y,'#4f46e5',3,'stroke-dasharray="6 5" pointer-events="none"')}
+ $('w').innerHTML=h;$('w').setAttribute('transform',`translate(${S.pan.x} ${S.pan.y}) scale(${S.zoom})`);$('zl').textContent=Math.round(S.zoom*100)+'%';relList();
+}
+function insp(){
+ const s=S.sel,n=s?.t=='n'&&N(s.id),r=s?.t=='r'&&S.rels.find(x=>x.id==s.id);
+ const sel=(k,l,o,v,a='')=>`<label>${l}<select ${a} data-k="${k}">${o.map(x=>{const[y,t]=Array.isArray(x)?x:[x,x];return`<option value="${y}" ${v==y?'selected':''}>${t}</option>`}).join('')}</select></label>`;
+ let h='<p class="mut">Select a person or line to edit it. Pick a line type above, then drag from one person to another to draw it. Press Delete to remove the selection. Use Key for the symbol guide.</p>';
+ if(n)h=F.map(([k,l,t,o])=>t=='select'?sel(k,l,o,n[k]??''):t=='check'?`<label><input type="checkbox" data-k="${k}" ${n[k]?'checked':''}> ${l}</label>`:`<label>${l}<input data-k="${k}" type="${t}" value="${esc(n[k]??'')}"></label>`).join('');
+ else if(r)h=`<b>${esc(N(r.from)?.name)} → ${esc(N(r.to)?.name)}</b>`+sel('type','Line type',Object.entries(T).map(([k,v])=>[k,v[0]]),r.type,'data-r="1"')+`<label>Date / label (e.g. m 2005)<input data-r="1" data-k="date" value="${esc(r.date||'')}"></label><button onclick="flip()">Reverse direction</button>`;
+ $('insp').innerHTML=h;
+}
+$('insp').addEventListener('input',e=>{
+ const k=e.target.dataset.k;if(!k)return;let v=e.target.type=='checkbox'?e.target.checked:e.target.value;
+ if(e.target.dataset.r){const r=S.rels.find(x=>x.id==S.sel?.id);if(r){r[k]=v;draw()}return}
+ const n=S.sel?.t=='n'&&N(S.sel.id);if(!n)return;if(k=='birth'||k=='death')v=v?+v:null;n[k]=v;draw();
+});
+
+const svg=$('svg');
+function wpt(e){const r=svg.getBoundingClientRect(),sx=e.clientX-r.left,sy=e.clientY-r.top;return{x:(sx-S.pan.x)/S.zoom,y:(sy-S.pan.y)/S.zoom,sx,sy}}
+const hit=p=>[...S.nodes].reverse().find(n=>Math.abs(p.x-n.x)<=44*(S.teacher?1.35:1)&&Math.abs(p.y-n.y)<=44*(S.teacher?1.35:1));
+const snap=v=>Math.round(v/20)*20;
+svg.addEventListener('pointerdown',e=>{
+ const p=wpt(e),n=hit(p);
+ if(n){if(S.tool=='move'){S.sel={t:'n',id:n.id};drag={id:n.id,ox:n.x-p.x,oy:n.y-p.y}}else draft={from:n.id,x:p.x,y:p.y,over:null};insp();draw();return}
+ const rid=e.target.closest?.('[data-rid]')?.dataset.rid;
+ if(rid){S.sel={t:'r',id:rid}}else{S.sel=null;pan={sx:e.clientX-S.pan.x,sy:e.clientY-S.pan.y}}
+ insp();draw();
+});
+window.addEventListener('pointermove',e=>{
+ if(drag){const n=N(drag.id),p=wpt(e);n.x=snap(p.x+drag.ox);n.y=snap(p.y+drag.oy);draw()}
+ else if(draft){const p=wpt(e),o=hit(p);draft.x=p.x;draft.y=p.y;draft.over=o&&o.id!=draft.from?o.id:null;draw()}
+ else if(pan){S.pan.x=e.clientX-pan.sx;S.pan.y=e.clientY-pan.sy;draw()}
+});
+window.addEventListener('pointerup',()=>{if(draft){if(draft.over)addRel(draft.from,draft.over);draft=null;draw()}drag=null;pan=null});
+function addRel(f,t){
+ const ty=S.tool;let a=N(f),b=N(t);
+ if(ty=='parent_child'&&a.y>b.y){[f,t]=[t,f];[a,b]=[b,a]}
+ if(S.rels.some(r=>r.from==f&&r.to==t&&r.type==ty))return;
+ if(PART.includes(ty)){b.y=a.y;if(Math.abs(b.x-a.x)<140)b.x=a.x+(b.x<a.x?-140:140)}
+ S.rels.push({id:'rel-'+Date.now()+Math.random().toString(36).slice(2,5),from:f,to:t,type:ty});
+}
+function zoom(f,mx=svg.clientWidth/2,my=svg.clientHeight/2){const z=Math.min(2,Math.max(.4,S.zoom*f)),wx=(mx-S.pan.x)/S.zoom,wy=(my-S.pan.y)/S.zoom;S.zoom=z;S.pan.x=mx-wx*z;S.pan.y=my-wy*z;draw()}
+svg.addEventListener('wheel',e=>{e.preventDefault();const p=wpt(e);zoom(e.deltaY<0?1.1:1/1.1,p.sx,p.sy)},{passive:false});
+function addNode(){
+ const k=S.nodes.length%5*20,n={id:'node-'+Date.now(),name:'New Person',sex:'male',pronouns:'he',birth:2000,death:null,job:'',diagnoses:'',presenting:'',culture:'',isDeceased:false,x:snap((svg.clientWidth/2-S.pan.x)/S.zoom)+k,y:snap((svg.clientHeight/2-S.pan.y)/S.zoom)+k};
+ S.nodes.push(n);S.sel={t:'n',id:n.id};insp();draw();
+}
+function del(){
+ if(!S.sel)return;
+ if(S.sel.t=='n'){S.rels=S.rels.filter(r=>r.from!=S.sel.id&&r.to!=S.sel.id);S.nodes=S.nodes.filter(n=>n.id!=S.sel.id)}
+ else S.rels=S.rels.filter(r=>r.id!=S.sel.id);
+ S.sel=null;insp();draw();
+}
+window.addEventListener('keydown',e=>{
+ if(e.key=='Escape')setTool('move');
+ else if((e.key=='Delete'||e.key=='Backspace')&&!['INPUT','SELECT'].includes(e.target.tagName)){e.preventDefault();del()}
+});
+function sample(){
+ const m=(id,name,sex,pr,b,job,dx,pp,cu,x,y)=>({id,name,sex,pronouns:pr,birth:b,death:null,job,diagnoses:dx,presenting:pp,culture:cu,isDeceased:false,x,y});
+ S.nodes=[m('n1','Bruce','male','he',1924,'Retired Banker','Hypertension','Anxiety','Caucasian',200,120),m('n2','Diana','female','she',1926,'Homemaker','Arthritis','','Caucasian',440,120),m('n3','Hal','male','he',1949,'Salesperson','Depression','Work stress','Caucasian',320,300),m('n4','Dinah','female','she',1952,'Homemaker','Migraines','Marital conflict','Hispanic',580,300),m('n5','Clark','male','he',1982,'Student','','Academic stress','Mixed',460,480)];
+ S.rels=[{id:'r1',from:'n1',to:'n2',type:'marriage',date:'m 1942'},{id:'r2',from:'n1',to:'n3',type:'parent_child'},{id:'r3',from:'n3',to:'n4',type:'divorce',date:'m 1972 d 1974'},{id:'r4',from:'n3',to:'n5',type:'parent_child'},{id:'r5',from:'n4',to:'n5',type:'parent_child'},{id:'r6',from:'n4',to:'n5',type:'conflict'}];
+ S.sel=null;insp();draw();
+}
+function clearAll(){if(confirm('Clear the whole genogram?')){S.nodes=[];S.rels=[];S.sel=null;insp();draw()}}
+function exportJSON(){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify({nodes:S.nodes,relationships:S.rels},null,2)],{type:'application/json'}));a.download='genogram_export.json';a.click()}
+function importJSON(e){
+ const f=e.target.files[0];if(!f)return;const r=new FileReader();
+ r.onload=()=>{try{const p=JSON.parse(r.result);if(p.nodes&&p.relationships){S.nodes=p.nodes;S.rels=p.relationships;S.sel=null;insp();draw()}}catch(x){alert('Invalid JSON file.')}};
+ r.readAsText(f);
+}
+sample();setTool('move');
+</script></body></html>
